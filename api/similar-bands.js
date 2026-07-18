@@ -1,7 +1,7 @@
 const { lookupBand } = require('./lib/lookupBand');
 const { indexGetAll } = require('./lib/cache');
 
-const MIN_SCORE = 0.1; // drop candidates with essentially no tag overlap
+const MIN_SCORE = 0.08; // drop candidates with essentially no tag overlap
 
 function similarity(anchor, candidate) {
   const setA = new Set(anchor.tags);
@@ -59,7 +59,7 @@ module.exports = async (req, res) => {
       .map((b) => ({ ...b, score: similarity(anchor, b) }))
       .filter((b) => b.score >= MIN_SCORE)
       .sort((a, b) => b.score - a.score)
-      .slice(0, 5);
+      .slice(0, 10);
 
     res.status(200).json({ anchor, matches });
   } catch (err) {
