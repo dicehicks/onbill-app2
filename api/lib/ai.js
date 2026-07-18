@@ -70,17 +70,24 @@ Set "found" to false if you cannot find real information about a real, currently
 // currently active local/regional bands that would sound good on the
 // same bill.
 async function suggestSimilarBands(anchorName, tags, city) {
-  const prompt = `A venue is booking a show and wants to build a bill around this act:
+  const prompt = `You are a music researcher, not a local show booker. Your only job is to find bands that SOUND like this one.
+
 Band: "${anchorName}"
-Genre tags: ${tags.join(', ') || 'unknown'}
+Genre/style tags: ${tags.join(', ') || 'unknown'}
 Based in: ${city || 'unknown'}
 
-Search the web for real, currently active bands from ${city || 'the same region'} or nearby areas that have a similar sound or would fit well on the same bill. Prefer bands that are still playing shows.
+Search the web for real, currently active bands whose actual musical style, instrumentation, and genre closely match the tags above. Sound similarity is the ONLY criterion that matters.
+
+Strict rules:
+- Do NOT suggest a band just because it's from ${city || 'the same area'}, is locally well-known, or has shared a bill/played a show with "${anchorName}" before. Scene familiarity and geography are irrelevant to this task.
+- Only include a band if its genre and sound would genuinely be described with tags similar to: ${tags.join(', ') || 'unknown'}.
+- It's fine, and expected, if some or most of your answers are from other cities or regions — prioritize a close sonic match over a local one.
+- If you can't find enough close sonic matches, return fewer results rather than padding the list with loosely-related local acts.
 
 Respond with ONLY a JSON array of band names, no other text, no markdown formatting, like this:
 ["Band Name One", "Band Name Two", "Band Name Three"]
 
-Include up to 8 names. Do not include "${anchorName}" itself.`;
+Include up to 8 names, ordered from closest sonic match to least. Do not include "${anchorName}" itself.`;
 
   const text = await callClaude(prompt);
   try {
