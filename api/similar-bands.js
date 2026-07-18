@@ -1,22 +1,7 @@
 const { lookupBand } = require('./lib/lookupBand');
-const { suggestSimilarBands } = require('./lib/ai');
+const { suggestSimilarBands, scoreSonicSimilarity } = require('./lib/ai');
 
-function similarity(anchor, candidate) {
-  const setA = new Set(anchor.tags);
-  const setB = new Set(candidate.tags);
-  const shared = [...setA].filter((t) => setB.has(t)).length;
-  const union = new Set([...setA, ...setB]).size || 1;
-  const tagScore = shared / union; // Jaccard overlap of genre tags — this is the real signal
-
-  // Same-city is only a small tiebreaker, and only counts if there's already
-  // genuine genre overlap. It should never rescue a band that doesn't sound alike.
-  const sameCity = anchor.city && candidate.city && anchor.city.toLowerCase() === candidate.city.toLowerCase();
-  const cityBonus = (sameCity && shared > 0) ? 0.05 : 0;
-
-  return Math.min(tagScore + cityBonus, 1);
-}
-
-const MIN_SCORE = 0.12; // drop candidates with little to no real genre overlap
+const MIN_SCORE = 0.35; // drop candidates Claude judges as not really sounding alike
 
 module.exports = async (req, res) => {
   const { name, city } = req.query;
@@ -47,9 +32,19 @@ module.exports = async (req, res) => {
       results.push(...looked);
     }
 
-    const matches = results
-      .filter((b) => b && b.name.toLowerCase() !== anchor.name.toLowerCase())
-      .map((b) => ({ ...b, score: similarity(anchor, b) }))
+    const candidates = results.filter(
+      (b) => b && b.name.toLowerCase() !== anchor.name.toLowerCase()
+    );
+
+    // Ask Claude to judge sonic similarity directly, using the fuller sound
+    // descriptions rather than just counting overlapping genre tag strings.
+    const scores = await scoreSonicSimilarity(anchor, candidates);
+
+    const matches = candidates
+      .map((b) => {
+        const judged = scores[b.name.toLowerCase()];
+        return { ...b, score: judged ? judged.score : 0, matchReason: judged ? judged.reason : null };
+      })
       .filter((b) => b.score >= MIN_SCORE)
       .sort((a, b) => b.score - a.score)
       .slice(0, 5);
