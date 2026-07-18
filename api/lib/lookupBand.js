@@ -1,66 +1,53 @@
 const { searchSpotifyArtist } = require('./spotify');
-const { lookupBandBackground } = require('./ai');
 const { cacheGet, cacheSet } = require('./cache');
+const OHIO_SEED_LIST = require('./ohioSeedList');
 
-// Full lookup: cache first, then Spotify + a web-search AI call for
-// background. Used for the anchor band the user actually typed in, where we
-// need accurate, freshly-researched info.
-async function lookupBand(name, cityHint) {
-  const cached = await cacheGet(name, cityHint);
+// Build a quick lookup map once, keyed by lowercased name.
+const SEED_MAP = new Map(OHIO_SEED_LIST.map((b) => [b.name.toLowerCase(), b]));
+
+// Primary source is our own compiled research (name, city, tags). Spotify is
+// secondary enrichment only - it adds listener counts and popularity when
+// available, and can supplement tags, but a band's absence from Spotify no
+// longer makes it unusable, since we already have real tags for every
+// seeded band from research.
+async function lookupBand(name) {
+  const cached = await cacheGet(name);
   if (cached) {
     return { ...cached, fromCache: true };
   }
 
-  const spotifyData = await searchSpotifyArtist(name);
-  if (!spotifyData) {
-    return null; // not on Spotify at all — treat as not found
+  const seedEntry = SEED_MAP.get(name.trim().toLowerCase());
+
+  // Best-effort Spotify enrichment - never blocks on this failing.
+  let spotifyData = null;
+  try {
+    spotifyData = await searchSpotifyArtist(name);
+  } catch {
+    spotifyData = null;
   }
 
-  const background = await lookupBandBackground(name, cityHint);
+  if (!seedEntry && !spotifyData) {
+    return null; // not in our research AND not on Spotify - genuinely not found
+  }
+
+  // Merge tags: our own research tags first (primary), Spotify's genres
+  // folded in as extra signal without overriding what we already know.
+  const ownTags = seedEntry ? seedEntry.tags : [];
+  const spotifyTags = spotifyData ? spotifyData.tags : [];
+  const mergedTags = [...new Set([...ownTags, ...spotifyTags])];
 
   const profile = {
-    name: spotifyData.spotifyName,
-    city: background.city || cityHint || null,
-    tags: spotifyData.tags,
-    listeners: spotifyData.listeners,
-    popularity: spotifyData.popularity,
-    activeSince: background.active_since || null,
-    bio: background.bio || null,
-    sound: background.sound || null,
-    spotifyUrl: spotifyData.spotifyUrl,
+    name: spotifyData ? spotifyData.spotifyName : (seedEntry ? seedEntry.name : name),
+    city: seedEntry ? seedEntry.city : null,
+    tags: mergedTags,
+    listeners: spotifyData ? spotifyData.listeners : null,
+    popularity: spotifyData ? spotifyData.popularity : null,
+    spotifyUrl: spotifyData ? spotifyData.spotifyUrl : null,
+    source: seedEntry && spotifyData ? 'research+spotify' : seedEntry ? 'research' : 'spotify',
   };
 
-  await cacheSet(name, cityHint, profile);
+  await cacheSet(name, profile);
   return { ...profile, fromCache: false };
 }
 
-// Cheaper lookup for candidate bands where Claude already researched and
-// described the sound as part of finding them — this only hits Spotify
-// (free) for tags/listener counts instead of paying for another web-search
-// call to re-research something we already know.
-async function lookupBandCheap(candidate) {
-  const cached = await cacheGet(candidate.name, candidate.city);
-  if (cached) {
-    return { ...cached, fromCache: true };
-  }
-
-  const spotifyData = await searchSpotifyArtist(candidate.name);
-  if (!spotifyData) return null;
-
-  const profile = {
-    name: spotifyData.spotifyName,
-    city: candidate.city || null,
-    tags: spotifyData.tags,
-    listeners: spotifyData.listeners,
-    popularity: spotifyData.popularity,
-    activeSince: null,
-    bio: null,
-    sound: candidate.sound || null,
-    spotifyUrl: spotifyData.spotifyUrl,
-  };
-
-  await cacheSet(candidate.name, candidate.city, profile);
-  return { ...profile, fromCache: false };
-}
-
-module.exports = { lookupBand, lookupBandCheap };
+module.exports = { lookupBand };
