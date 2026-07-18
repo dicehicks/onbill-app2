@@ -20,10 +20,12 @@ async function lookupBand(name) {
 
   // Best-effort Spotify enrichment - never blocks on this failing.
   let spotifyData = null;
+  let spotifyError = null;
   try {
     spotifyData = await searchSpotifyArtist(name);
-  } catch {
+  } catch (err) {
     spotifyData = null;
+    spotifyError = err.message; // TEMP DEBUG - remove once Spotify issue is diagnosed
   }
 
   if (!seedEntry && !spotifyData) {
@@ -44,6 +46,7 @@ async function lookupBand(name) {
     popularity: spotifyData ? spotifyData.popularity : null,
     spotifyUrl: spotifyData ? spotifyData.spotifyUrl : null,
     source: seedEntry && spotifyData ? 'research+spotify' : seedEntry ? 'research' : 'spotify',
+    spotifyError, // TEMP DEBUG - remove once Spotify issue is diagnosed
   };
 
   await cacheSet(name, profile);
