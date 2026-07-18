@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ONBILL — Find bands that fit the bill</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #17111a; --bg-raised: #201823; --ink: #ede6dd; --ink-dim: #a99fa8;
+    --amber: #e8a33d; --brick: #c1443c; --teal: #4e7c74; --line: #3a2f3c; --radius: 2px;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{
+    background: var(--bg);
+    background-image: radial-gradient(circle at 15% 0%, rgba(232,163,61,0.06), transparent 40%),
+      radial-gradient(circle at 85% 100%, rgba(78,124,116,0.08), transparent 45%);
+    color: var(--ink); font-family: 'IBM Plex Sans', sans-serif; min-height: 100vh; padding: 48px 20px 80px;
+  }
+  .wrap{ max-width: 720px; margin: 0 auto; }
+  header{ text-align:center; margin-bottom: 40px; }
+  .marquee{ font-family:'Oswald', sans-serif; font-weight:700; font-size: clamp(38px, 8vw, 64px);
+    letter-spacing: 0.02em; text-transform: uppercase; line-height: 0.95; color: var(--amber);
+    text-shadow: 0 0 24px rgba(232,163,61,0.25); }
+  .tagline{ font-family:'IBM Plex Mono', monospace; font-size: 13px; color: var(--ink-dim);
+    margin-top: 10px; letter-spacing: 0.04em; }
+  .search-panel{ background: var(--bg-raised); border: 1px solid var(--line); border-radius: var(--radius); padding: 22px; margin-bottom: 28px; }
+  .field-row{ display:flex; gap: 10px; flex-wrap: wrap; }
+  .field{ flex: 1 1 200px; }
+  label{ display:block; font-family:'IBM Plex Mono', monospace; font-size: 11px; text-transform: uppercase;
+    letter-spacing: 0.08em; color: var(--ink-dim); margin-bottom: 6px; }
+  input[type=text]{ width:100%; background: var(--bg); border: 1px solid var(--line); color: var(--ink);
+    padding: 12px 14px; font-family:'IBM Plex Sans', sans-serif; font-size: 15px; border-radius: var(--radius); }
+  input[type=text]:focus{ outline: 2px solid var(--amber); outline-offset: 1px; }
+  .go-btn{ margin-top: 14px; width: 100%; background: var(--brick); color: var(--ink); border: none;
+    padding: 13px 20px; font-family:'Oswald', sans-serif; font-weight: 600; font-size: 16px;
+    letter-spacing: 0.06em; text-transform: uppercase; border-radius: var(--radius); cursor: pointer;
+    transition: background 0.15s ease, transform 0.1s ease; }
+  .go-btn:hover{ background: #d65246; }
+  .go-btn:disabled{ opacity: 0.5; cursor: not-allowed; }
+  .go-btn:active{ transform: scale(0.99); }
+  .status{ font-family:'IBM Plex Mono', monospace; font-size: 12px; color: var(--teal); min-height: 18px;
+    margin-bottom: 12px; letter-spacing: 0.03em; }
+  .status.error{ color: var(--brick); }
+  .anchor-card{ display:none; border: 1px solid var(--line); background: var(--bg-raised); padding: 16px 20px;
+    margin-bottom: 22px; border-radius: var(--radius); }
+  .anchor-label{ font-family:'IBM Plex Mono', monospace; font-size: 10px; color: var(--ink-dim);
+    text-transform: uppercase; letter-spacing: 0.1em; }
+  .anchor-name{ font-family:'Oswald', sans-serif; font-size: 22px; text-transform: uppercase; color: var(--amber); margin: 2px 0 6px; }
+  .anchor-meta{ font-family:'IBM Plex Mono', monospace; font-size: 12px; color: var(--ink-dim); }
+  .anchor-bio{ font-size: 13px; color: var(--ink-dim); margin-top: 8px; line-height: 1.5; }
+  .bill{ display:none; }
+  .bill-heading{ font-family:'Oswald', sans-serif; font-size: 13px; text-transform: uppercase;
+    letter-spacing: 0.12em; color: var(--ink-dim); border-bottom: 1px solid var(--line); padding-bottom: 8px; margin-bottom: 4px; }
+  .band-card{ display:flex; gap: 16px; align-items: center; padding: 16px 4px; border-bottom: 1px dashed var(--line); }
+  .band-rank{ font-family:'Oswald', sans-serif; font-size: 26px; color: var(--line); width: 34px; flex-shrink:0; text-align:center; }
+  .band-info{ flex: 1; min-width: 0; }
+  .band-name{ font-family:'Oswald', sans-serif; font-size: 19px; text-transform: uppercase; letter-spacing:0.01em; }
+  .band-meta{ font-family:'IBM Plex Mono', monospace; font-size: 12px; color: var(--ink-dim); margin-top: 3px; }
+  .band-tags{ margin-top: 6px; display:flex; flex-wrap:wrap; gap:6px; }
+  .tag{ font-family:'IBM Plex Mono', monospace; font-size: 10.5px; color: var(--teal); border: 1px solid var(--teal); padding: 2px 7px; border-radius: 20px; }
+  .meter{ width: 68px; flex-shrink:0; text-align:center; }
+  .meter-label{ font-family:'IBM Plex Mono', monospace; font-size: 10px; color: var(--ink-dim); margin-bottom:5px; }
+  .eq{ display:flex; gap:3px; justify-content:center; align-items:flex-end; height: 30px; }
+  .eq span{ width:5px; background: var(--line); border-radius:1px; }
+  .eq span.lit{ background: var(--amber); }
+  .empty{ display:none; text-align:center; padding: 40px 20px; color: var(--ink-dim); font-family:'IBM Plex Mono', monospace;
+    font-size: 13px; border: 1px dashed var(--line); border-radius: var(--radius); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="marquee">ONBILL</div>
+    <div class="tagline">// find local acts that fit the bill</div>
+  </header>
+
+  <div class="search-panel">
+    <div class="field-row">
+      <div class="field">
+        <label for="bandInput">Band name</label>
+        <input type="text" id="bandInput" placeholder="e.g. a real band name" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="cityInput">City</label>
+        <input type="text" id="cityInput" placeholder="e.g. Akron" autocomplete="off">
+      </div>
+    </div>
+    <button class="go-btn" id="goBtn" onclick="runSearch()">Find similar acts</button>
+  </div>
+
+  <div class="status" id="status"></div>
+  <div class="anchor-card" id="anchorCard">
+    <div class="anchor-label">Searching for acts similar to</div>
+    <div class="anchor-name" id="anchorName"></div>
+    <div class="anchor-meta" id="anchorMeta"></div>
+    <div class="anchor-bio" id="anchorBio"></div>
+  </div>
+  <div class="empty" id="emptyState"></div>
+  <div class="bill" id="bill">
+    <div class="bill-heading">Suggested lineup</div>
+    <div id="results"></div>
+  </div>
+</div>
+
+<script>
+function eqBars(score){
+  const total = 5;
+  const lit = Math.round(score * total);
+  let html = '';
+  for(let i=0;i<total;i++){
+    const h = 10 + i*5;
+    html += `<span class="${i < lit ? 'lit' : ''}" style="height:${h}px"></span>`;
+  }
+  return html;
+}
+
+function fmt(n){ return (n || 0).toLocaleString(); }
+
+async function runSearch(){
+  const name = document.getElementById('bandInput').value.trim();
+  const city = document.getElementById('cityInput').value.trim();
+  const statusEl = document.getElementById('status');
+  const anchorCard = document.getElementById('anchorCard');
+  const emptyState = document.getElementById('emptyState');
+  const billEl = document.getElementById('bill');
+  const resultsEl = document.getElementById('results');
+  const goBtn = document.getElementById('goBtn');
+
+  billEl.style.display = 'none';
+  emptyState.style.display = 'none';
+  anchorCard.style.display = 'none';
+  resultsEl.innerHTML = '';
+  statusEl.className = 'status';
+
+  if(!name){ statusEl.textContent = 'Type a band name to search.'; return; }
+
+  goBtn.disabled = true;
+  statusEl.textContent = 'Checking Spotify and searching the web — this can take up to ~15 seconds the first time...';
+
+  try {
+    const url = `/api/similar-bands?name=${encodeURIComponent(name)}&city=${encodeURIComponent(city)}`;
+    const res = await fetch(url);
+    const data = await res.json();
+
+    if(!res.ok){
+      statusEl.textContent = data.error || 'Something went wrong.';
+      statusEl.className = 'status error';
+      goBtn.disabled = false;
+      return;
+    }
+
+    const anchor = data.anchor;
+    statusEl.textContent = `Tags found: ${anchor.tags.join(', ') || 'none listed'}${anchor.fromCache ? ' (from cache)' : ''}`;
+
+    anchorCard.style.display = 'block';
+    document.getElementById('anchorName').textContent = anchor.name;
+    document.getElementById('anchorMeta').textContent =
+      `${anchor.city || 'location unknown'} · ${fmt(anchor.listeners)} monthly listeners${anchor.activeSince ? ' · active since ' + anchor.activeSince : ''}`;
+    document.getElementById('anchorBio').textContent = anchor.bio || '';
+
+    if(!data.matches || data.matches.length === 0){
+      emptyState.textContent = 'No similar local acts turned up. Try a band with a bigger web presence, or double-check the city.';
+      emptyState.style.display = 'block';
+      goBtn.disabled = false;
+      return;
+    }
+
+    data.matches.forEach((b, i) => {
+      const card = document.createElement('div');
+      card.className = 'band-card';
+      card.innerHTML = `
+        <div class="band-rank">${i+1}</div>
+        <div class="band-info">
+          <div class="band-name">${b.name}</div>
+          <div class="band-meta">${b.city || 'unknown'} · ${fmt(b.listeners)} monthly listeners</div>
+          <div class="band-tags">${b.tags.map(t => `<span class="tag">${t}</span>`).join('')}</div>
+        </div>
+        <div class="meter">
+          <div class="meter-label">${Math.round(b.score*100)}%</div>
+          <div class="eq">${eqBars(b.score)}</div>
+        </div>
+      `;
+      resultsEl.appendChild(card);
+    });
+
+    billEl.style.display = 'block';
+  } catch (err) {
+    statusEl.textContent = 'Request failed: ' + err.message;
+    statusEl.className = 'status error';
+  }
+
+  goBtn.disabled = false;
+}
+</script>
+</body>
+</html>
