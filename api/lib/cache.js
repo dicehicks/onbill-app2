@@ -1,8 +1,7 @@
 // Simple key-value cache using Upstash Redis (free tier, no server to manage).
-// This is what makes repeat lookups instant and free instead of hitting
-// Spotify + Claude every single time someone searches the same band.
+// Keyed by band name only now - no city involved anywhere in this app.
 
-const TTL_SECONDS = 60 * 60 * 24 * 90; // cache each band for 90 days - band genre/sound rarely changes, so keep it longer to avoid re-paying for the same lookup
+const TTL_SECONDS = 60 * 60 * 24 * 90; // cache each band for 90 days
 
 function baseUrl() {
   const url = process.env.UPSTASH_REDIS_REST_URL;
@@ -13,14 +12,14 @@ function baseUrl() {
   return { url, token };
 }
 
-function normalizeKey(name, city) {
-  const clean = (s) => (s || '').trim().toLowerCase().replace(/\s+/g, ' ');
-  return `band:${clean(name)}:${clean(city)}`;
+function normalizeKey(name) {
+  const clean = (name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  return `band:${clean}`;
 }
 
-async function cacheGet(name, city) {
+async function cacheGet(name) {
   const { url, token } = baseUrl();
-  const key = normalizeKey(name, city);
+  const key = normalizeKey(name);
 
   const res = await fetch(`${url}/get/${encodeURIComponent(key)}`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -37,9 +36,9 @@ async function cacheGet(name, city) {
   }
 }
 
-async function cacheSet(name, city, value) {
+async function cacheSet(name, value) {
   const { url, token } = baseUrl();
-  const key = normalizeKey(name, city);
+  const key = normalizeKey(name);
   const body = encodeURIComponent(JSON.stringify(value));
 
   await fetch(`${url}/set/${encodeURIComponent(key)}/${body}?EX=${TTL_SECONDS}`, {
@@ -48,3 +47,31 @@ async function cacheSet(name, city, value) {
 }
 
 module.exports = { cacheGet, cacheSet };
+
+// --- Ohio band index ---
+// A Redis SET of band names that are confirmed to be in the Ohio seed list.
+// This is what the matching engine scores candidates from, instead of
+// searching Spotify's whole genre space live.
+
+const INDEX_KEY = 'ohio:index';
+
+async function indexAdd(name) {
+  const { url, token } = baseUrl();
+  const member = encodeURIComponent(name.trim().toLowerCase());
+  await fetch(`${url}/sadd/${INDEX_KEY}/${member}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+async function indexGetAll() {
+  const { url, token } = baseUrl();
+  const res = await fetch(`${url}/smembers/${INDEX_KEY}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.result || [];
+}
+
+module.exports.indexAdd = indexAdd;
+module.exports.indexGetAll = indexGetAll;
