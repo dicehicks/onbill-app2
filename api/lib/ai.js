@@ -2,10 +2,19 @@
 // track, like where a band is actually based, and to suggest other local
 // bands with a similar sound.
 
-async function callClaude(prompt) {
+async function callClaude(prompt, { webSearch = true, maxTokens = 1000 } = {}) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     throw new Error('Missing ANTHROPIC_API_KEY environment variable.');
+  }
+
+  const body = {
+    model: 'claude-sonnet-4-6',
+    max_tokens: maxTokens,
+    messages: [{ role: 'user', content: prompt }],
+  };
+  if (webSearch) {
+    body.tools = [{ type: 'web_search_20250305', name: 'web_search' }];
   }
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -15,12 +24,7 @@ async function callClaude(prompt) {
       'x-api-key': apiKey,
       'anthropic-version': '2023-06-01',
     },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 1000,
-      messages: [{ role: 'user', content: prompt }],
-      tools: [{ type: 'web_search_20250305', name: 'web_search' }],
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!res.ok) {
@@ -54,7 +58,7 @@ async function lookupBandBackground(name, cityHint) {
   }.
 
 Respond with ONLY a JSON object, no other text, no markdown formatting, in exactly this shape:
-{"city": "the city/town they are based in, or null if unknown", "active_since": "year they formed, or null if unknown", "bio": "one sentence, under 25 words, describing their sound and background", "found": true or false}
+{"city": "the city/town they are based in, or null if unknown", "active_since": "year they formed, or null if unknown", "bio": "one sentence, under 25 words, general background/context", "sound": "under 35 words describing ONLY the sonic characteristics: instrumentation, vocal style (e.g. screamed/clean/spoken), tempo and energy level, production feel (raw/polished/lo-fi), and 1-2 comparable well-known artists if there's a clear reference point", "found": true or false}
 
 Set "found" to false if you cannot find real information about a real, currently or recently active band with this name.`;
 
@@ -98,4 +102,45 @@ Include up to 8 names, ordered from closest sonic match to least. Do not include
   }
 }
 
-module.exports = { lookupBandBackground, suggestSimilarBands };
+// This is the core fix for weak/sparse Spotify genre tags: instead of just
+// counting overlapping tag strings, ask Claude to actually reason about how
+// similar each candidate SOUNDS to the anchor band, using the fuller sonic
+// descriptions. Tags are passed along only as a minor supporting hint.
+async function scoreSonicSimilarity(anchor, candidates) {
+  if (!candidates.length) return {};
+
+  const candidateBlock = candidates
+    .map((c, i) => `${i + 1}. "${c.name}" — sound: ${c.sound || c.bio || 'unknown'}. tags: ${c.tags.join(', ') || 'none'}`)
+    .join('\n');
+
+  const prompt = `You're judging how similar each candidate band SOUNDS to a reference band, for the purpose of building a concert bill where the sonic vibe should flow well.
+
+Reference band: "${anchor.name}"
+Reference sound: ${anchor.sound || anchor.bio || 'unknown'}
+Reference tags (minor supporting signal only): ${anchor.tags.join(', ') || 'none'}
+
+Candidates:
+${candidateBlock}
+
+For each candidate, score 0-100 for how sonically similar it actually is to the reference band. Base this primarily on the sound descriptions (instrumentation, vocal style, tempo/energy, production feel, comparable artists) — treat the tags as a weak secondary hint only, since genre tag data is often sparse or inconsistent and should not drive the score on its own. Two bands can sound very similar even with zero overlapping tags, and two bands can share a tag while sounding nothing alike — judge the actual sound.
+
+Respond with ONLY a JSON array, no other text, no markdown formatting, in exactly this shape:
+[{"name": "Candidate Name", "score": 0-100, "reason": "under 12 words"}]
+
+Include every candidate listed above, in the same order.`;
+
+  const text = await callClaude(prompt, { webSearch: false, maxTokens: 1200 });
+  try {
+    const result = parseJsonLoose(text);
+    if (!Array.isArray(result)) return {};
+    const map = {};
+    result.forEach((r) => {
+      if (r && r.name) map[r.name.toLowerCase()] = { score: (r.score || 0) / 100, reason: r.reason || '' };
+    });
+    return map;
+  } catch {
+    return {};
+  }
+}
+
+module.exports = { lookupBandBackground, suggestSimilarBands, scoreSonicSimilarity };
