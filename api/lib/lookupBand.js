@@ -26,6 +26,7 @@ async function lookupBand(name, cityHint) {
     popularity: spotifyData.popularity,
     activeSince: background.active_since || null,
     bio: background.bio || null,
+    sound: background.sound || null,
     spotifyUrl: spotifyData.spotifyUrl,
   };
 
