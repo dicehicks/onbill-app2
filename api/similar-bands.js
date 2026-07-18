@@ -1,5 +1,5 @@
-const { lookupBand } = require('./lib/lookupBand');
-const { suggestSimilarBands, scoreSonicSimilarity } = require('./lib/ai');
+const { lookupBand, lookupBandCheap } = require('./lib/lookupBand');
+const { suggestAndScoreSimilarBands } = require('./lib/ai');
 
 const MIN_SCORE = 0.35; // drop candidates Claude judges as not really sounding alike
 
@@ -12,40 +12,31 @@ module.exports = async (req, res) => {
   }
 
   try {
+    // Web-search call #1: research the anchor band.
     const anchor = await lookupBand(name, city);
     if (!anchor) {
       res.status(404).json({ error: `No band found matching "${name}". Try a more well-known act to test with.` });
       return;
     }
 
-    const candidateNames = await suggestSimilarBands(anchor.name, anchor.tags, anchor.city);
+    // Web-search call #2: find candidates, research their sound, and score
+    // them against the anchor, all in one pass.
+    const candidates = await suggestAndScoreSimilarBands(anchor);
 
-    // Look up each candidate (cache-first, so repeats are instant).
-    // Run a few at a time rather than all at once, to be gentle on rate limits.
-    const results = [];
-    const batchSize = 3;
-    for (let i = 0; i < candidateNames.length; i += batchSize) {
-      const batch = candidateNames.slice(i, i + batchSize);
-      const looked = await Promise.all(
-        batch.map((n) => lookupBand(n, anchor.city).catch(() => null))
-      );
-      results.push(...looked);
-    }
-
-    const candidates = results.filter(
-      (b) => b && b.name.toLowerCase() !== anchor.name.toLowerCase()
+    // Spotify lookups are free and don't call Claude at all — this just
+    // fills in real tags/listener counts for display.
+    const looked = await Promise.all(
+      candidates
+        .filter((c) => c && c.name && c.name.toLowerCase() !== anchor.name.toLowerCase())
+        .map((c) =>
+          lookupBandCheap(c)
+            .then((profile) => (profile ? { ...profile, score: (c.score || 0) / 100, matchReason: c.reason || null } : null))
+            .catch(() => null)
+        )
     );
 
-    // Ask Claude to judge sonic similarity directly, using the fuller sound
-    // descriptions rather than just counting overlapping genre tag strings.
-    const scores = await scoreSonicSimilarity(anchor, candidates);
-
-    const matches = candidates
-      .map((b) => {
-        const judged = scores[b.name.toLowerCase()];
-        return { ...b, score: judged ? judged.score : 0, matchReason: judged ? judged.reason : null };
-      })
-      .filter((b) => b.score >= MIN_SCORE)
+    const matches = looked
+      .filter((b) => b && b.score >= MIN_SCORE)
       .sort((a, b) => b.score - a.score)
       .slice(0, 5);
 
