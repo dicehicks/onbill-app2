@@ -6,14 +6,17 @@ function similarity(anchor, candidate) {
   const setB = new Set(candidate.tags);
   const shared = [...setA].filter((t) => setB.has(t)).length;
   const union = new Set([...setA, ...setB]).size || 1;
-  let score = shared / union; // Jaccard overlap of genre tags
+  const tagScore = shared / union; // Jaccard overlap of genre tags — this is the real signal
 
-  if (anchor.city && candidate.city && anchor.city.toLowerCase() === candidate.city.toLowerCase()) {
-    score += 0.15;
-  }
+  // Same-city is only a small tiebreaker, and only counts if there's already
+  // genuine genre overlap. It should never rescue a band that doesn't sound alike.
+  const sameCity = anchor.city && candidate.city && anchor.city.toLowerCase() === candidate.city.toLowerCase();
+  const cityBonus = (sameCity && shared > 0) ? 0.05 : 0;
 
-  return Math.min(score, 1);
+  return Math.min(tagScore + cityBonus, 1);
 }
+
+const MIN_SCORE = 0.12; // drop candidates with little to no real genre overlap
 
 module.exports = async (req, res) => {
   const { name, city } = req.query;
@@ -47,6 +50,7 @@ module.exports = async (req, res) => {
     const matches = results
       .filter((b) => b && b.name.toLowerCase() !== anchor.name.toLowerCase())
       .map((b) => ({ ...b, score: similarity(anchor, b) }))
+      .filter((b) => b.score >= MIN_SCORE)
       .sort((a, b) => b.score - a.score)
       .slice(0, 5);
 
