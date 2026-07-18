@@ -1,5 +1,5 @@
-const { searchSpotifyArtist } = require('./lib/spotify');
-const { cacheGet, cacheSet, indexAdd } = require('./lib/cache');
+const { lookupBand } = require('./lib/lookupBand');
+const { indexAdd } = require('./lib/cache');
 const OHIO_SEED_LIST = require('./lib/ohioSeedList');
 
 // Run this once (in batches) to populate the database with the Ohio seed
@@ -7,8 +7,7 @@ const OHIO_SEED_LIST = require('./lib/ohioSeedList');
 // skipped fast, so re-running just picks up where it left off.
 //
 // Usage: visit /api/seed-ohio?offset=0&limit=40 in your browser, then
-// increase offset by the "limit" each time using the "nextOffset" the
-// response gives you, until "done" is true.
+// follow "nextUrl" in the response until "done" is true.
 
 module.exports = async (req, res) => {
   const offset = parseInt(req.query.offset || '0', 10);
@@ -21,37 +20,22 @@ module.exports = async (req, res) => {
     return;
   }
 
-  const results = { found: [], notFoundOnSpotify: [], alreadyCached: [] };
+  const results = { withTags: [], noUsableTags: [] };
 
   await Promise.all(
-    batch.map(async (name) => {
+    batch.map(async (entry) => {
       try {
-        const cached = await cacheGet(name);
-        if (cached) {
-          await indexAdd(name);
-          results.alreadyCached.push(name);
-          return;
+        const profile = await lookupBand(entry.name);
+        if (profile && profile.tags && profile.tags.length > 0) {
+          await indexAdd(entry.name);
+          results.withTags.push(entry.name);
+        } else {
+          // Still cached/found, just nothing to match on (no research tags,
+          // not on Spotify either) - not added to the index.
+          results.noUsableTags.push(entry.name);
         }
-
-        const spotifyData = await searchSpotifyArtist(name);
-        if (!spotifyData) {
-          results.notFoundOnSpotify.push(name);
-          return;
-        }
-
-        const profile = {
-          name: spotifyData.spotifyName,
-          tags: spotifyData.tags,
-          listeners: spotifyData.listeners,
-          popularity: spotifyData.popularity,
-          spotifyUrl: spotifyData.spotifyUrl,
-        };
-
-        await cacheSet(name, profile);
-        await indexAdd(name);
-        results.found.push(name);
       } catch (err) {
-        results.notFoundOnSpotify.push(`${name} (error: ${err.message})`);
+        results.noUsableTags.push(`${entry.name} (error: ${err.message})`);
       }
     })
   );
@@ -62,9 +46,8 @@ module.exports = async (req, res) => {
   res.status(200).json({
     processed: batch.length,
     totalInList: OHIO_SEED_LIST.length,
-    newlyFound: results.found.length,
-    alreadyCached: results.alreadyCached.length,
-    notFoundOnSpotify: results.notFoundOnSpotify,
+    addedToIndex: results.withTags.length,
+    skippedNoTags: results.noUsableTags,
     done,
     nextOffset: done ? null : nextOffset,
     nextUrl: done ? null : `/api/seed-ohio?offset=${nextOffset}&limit=${limit}`,
