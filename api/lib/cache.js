@@ -2,7 +2,7 @@
 // This is what makes repeat lookups instant and free instead of hitting
 // Spotify + Claude every single time someone searches the same band.
 
-const TTL_SECONDS = 60 * 60 * 24 * 30; // cache each band for 30 days
+const TTL_SECONDS = 60 * 60 * 24 * 90; // cache each band for 90 days - band genre/sound rarely changes, so keep it longer to avoid re-paying for the same lookup
 
 function baseUrl() {
   const url = process.env.UPSTASH_REDIS_REST_URL;
