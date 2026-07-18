@@ -176,6 +176,7 @@ async function runSearch(){
           <div class="band-name">${b.name}</div>
           <div class="band-meta">${b.city || 'unknown'} · ${fmt(b.listeners)} monthly listeners</div>
           <div class="band-tags">${b.tags.map(t => `<span class="tag">${t}</span>`).join('')}</div>
+          ${b.matchReason ? `<div class="band-meta" style="margin-top:4px; font-style:italic;">${b.matchReason}</div>` : ''}
         </div>
         <div class="meter">
           <div class="meter-label">${Math.round(b.score*100)}%</div>
