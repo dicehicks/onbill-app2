@@ -82,10 +82,6 @@
         <label for="bandInput">Band name</label>
         <input type="text" id="bandInput" placeholder="e.g. a real band name" autocomplete="off">
       </div>
-      <div class="field">
-        <label for="cityInput">City</label>
-        <input type="text" id="cityInput" placeholder="e.g. Akron" autocomplete="off">
-      </div>
     </div>
     <button class="go-btn" id="goBtn" onclick="runSearch()">Find similar acts</button>
   </div>
@@ -95,7 +91,6 @@
     <div class="anchor-label">Searching for acts similar to</div>
     <div class="anchor-name" id="anchorName"></div>
     <div class="anchor-meta" id="anchorMeta"></div>
-    <div class="anchor-bio" id="anchorBio"></div>
   </div>
   <div class="empty" id="emptyState"></div>
   <div class="bill" id="bill">
@@ -120,7 +115,6 @@ function fmt(n){ return (n || 0).toLocaleString(); }
 
 async function runSearch(){
   const name = document.getElementById('bandInput').value.trim();
-  const city = document.getElementById('cityInput').value.trim();
   const statusEl = document.getElementById('status');
   const anchorCard = document.getElementById('anchorCard');
   const emptyState = document.getElementById('emptyState');
@@ -137,10 +131,10 @@ async function runSearch(){
   if(!name){ statusEl.textContent = 'Type a band name to search.'; return; }
 
   goBtn.disabled = true;
-  statusEl.textContent = 'Checking Spotify and searching the web — this can take up to ~15 seconds the first time...';
+  statusEl.textContent = 'Searching Spotify by genre...';
 
   try {
-    const url = `/api/similar-bands?name=${encodeURIComponent(name)}&city=${encodeURIComponent(city)}`;
+    const url = `/api/similar-bands?name=${encodeURIComponent(name)}`;
     const res = await fetch(url);
     const data = await res.json();
 
@@ -157,11 +151,10 @@ async function runSearch(){
     anchorCard.style.display = 'block';
     document.getElementById('anchorName').textContent = anchor.name;
     document.getElementById('anchorMeta').textContent =
-      `${anchor.city || 'location unknown'} · ${fmt(anchor.listeners)} monthly listeners${anchor.activeSince ? ' · active since ' + anchor.activeSince : ''}`;
-    document.getElementById('anchorBio').textContent = anchor.bio || '';
+      `${fmt(anchor.listeners)} monthly listeners`;
 
     if(!data.matches || data.matches.length === 0){
-      emptyState.textContent = 'No similar local acts turned up. Try a band with a bigger web presence, or double-check the city.';
+      emptyState.textContent = data.note || 'No similar acts turned up by genre tag. Try a band with a bigger Spotify presence.';
       emptyState.style.display = 'block';
       goBtn.disabled = false;
       return;
@@ -174,9 +167,8 @@ async function runSearch(){
         <div class="band-rank">${i+1}</div>
         <div class="band-info">
           <div class="band-name">${b.name}</div>
-          <div class="band-meta">${b.city || 'unknown'} · ${fmt(b.listeners)} monthly listeners</div>
+          <div class="band-meta">${fmt(b.listeners)} monthly listeners</div>
           <div class="band-tags">${b.tags.map(t => `<span class="tag">${t}</span>`).join('')}</div>
-          ${b.matchReason ? `<div class="band-meta" style="margin-top:4px; font-style:italic;">${b.matchReason}</div>` : ''}
         </div>
         <div class="meter">
           <div class="meter-label">${Math.round(b.score*100)}%</div>
