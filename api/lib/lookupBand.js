@@ -2,9 +2,9 @@ const { searchSpotifyArtist } = require('./spotify');
 const { lookupBandBackground } = require('./ai');
 const { cacheGet, cacheSet } = require('./cache');
 
-// The main function: given a band name (and optionally a city hint),
-// returns a combined profile — cached if we've seen it before, freshly
-// built from Spotify + Claude if not.
+// Full lookup: cache first, then Spotify + a web-search AI call for
+// background. Used for the anchor band the user actually typed in, where we
+// need accurate, freshly-researched info.
 async function lookupBand(name, cityHint) {
   const cached = await cacheGet(name, cityHint);
   if (cached) {
@@ -34,4 +34,33 @@ async function lookupBand(name, cityHint) {
   return { ...profile, fromCache: false };
 }
 
-module.exports = { lookupBand };
+// Cheaper lookup for candidate bands where Claude already researched and
+// described the sound as part of finding them — this only hits Spotify
+// (free) for tags/listener counts instead of paying for another web-search
+// call to re-research something we already know.
+async function lookupBandCheap(candidate) {
+  const cached = await cacheGet(candidate.name, candidate.city);
+  if (cached) {
+    return { ...cached, fromCache: true };
+  }
+
+  const spotifyData = await searchSpotifyArtist(candidate.name);
+  if (!spotifyData) return null;
+
+  const profile = {
+    name: spotifyData.spotifyName,
+    city: candidate.city || null,
+    tags: spotifyData.tags,
+    listeners: spotifyData.listeners,
+    popularity: spotifyData.popularity,
+    activeSince: null,
+    bio: null,
+    sound: candidate.sound || null,
+    spotifyUrl: spotifyData.spotifyUrl,
+  };
+
+  await cacheSet(candidate.name, candidate.city, profile);
+  return { ...profile, fromCache: false };
+}
+
+module.exports = { lookupBand, lookupBandCheap };
